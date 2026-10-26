@@ -6,6 +6,11 @@ import { playUiSound } from "../../lib/ui-sounds";
 type Task = {
   id: string | number;
   name: string | null;
+  status: string | null;
+  driftStatus: string | null;
+  executionDurationMs: number | null;
+  processedAt: string | null;
+  roiPriorityRank: number | null;
 };
 
 type DashboardProps = {
@@ -351,7 +356,7 @@ export function Dashboard({ tasks, taskCount, dataError, dateLabel }: DashboardP
                 <button className="text-link" onClick={() => setActiveNav("Activity")} data-sound>ALL TASKS <Icon name="arrow" size={13} /></button>
               </div>
               {dataError ? <div className="task-state task-error"><span className="state-dot" /> Awaiting database connection</div> : filteredTasks.length === 0 ? <div className="task-state"><span className="state-dot" /> {query ? "No tasks match your search." : "No tasks in the queue yet."}</div> : (
-                <div className="task-list">{filteredTasks.slice(0, 4).map((task) => <div className="task-row" key={task.id}><span className="task-state-icon"><Icon name="check" size={13} /></span><span className="task-name">{task.name ?? "Untitled task"}</span><span className="task-state-label">SYNCED</span></div>)}</div>
+                <div className="task-list">{filteredTasks.slice(0, 4).map((task) => <div className="task-row" key={task.id}><span className="task-state-icon"><Icon name="check" size={13} /></span><span className="task-name">{task.name ?? "Untitled task"}</span><span className="task-state-label">{task.status ?? "PENDING"}</span>{task.driftStatus && task.driftStatus !== "OPTIMAL" ? <span className="task-state-label">{task.driftStatus}</span> : null}{typeof task.executionDurationMs === "number" ? <span className="task-state-label">{`${task.executionDurationMs} MS`}</span> : null}</div>)}</div>
               )}
             </article>
           </section>
