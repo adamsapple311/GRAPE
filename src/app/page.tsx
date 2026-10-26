@@ -6,11 +6,14 @@ import { Dashboard } from "../features/dashboard/dashboard";
 // dashboard needs. Column names are grounded in agentLoop.ts, which
 // reads/writes exactly these fields (status, drift_status,
 // execution_duration_ms, processed_at, roi_priority_rank,
-// operational_action, workflow_marker).
+// operational_action; name falls back to associated_entity.
+// NOTE: there is no workflow_marker column in the live table (verified
+// against information_schema 2026-10-26) — agentLoop.ts references it
+// only as an optional fallback on an `any`-typed object.
 type AgentRoiInsightRow = {
   id: string | number;
   operational_action: string | null;
-  workflow_marker: string | null;
+  associated_entity: string | null;
   status: string | null;
   drift_status: string | null;
   execution_duration_ms: number | null;
@@ -39,7 +42,7 @@ export default async function Page() {
   const { data, error, count } = await supabase
     .from("agent_roi_insights")
     .select(
-      "id, operational_action, workflow_marker, status, drift_status, execution_duration_ms, processed_at, roi_priority_rank",
+      "id, operational_action, associated_entity, status, drift_status, execution_duration_ms, processed_at, roi_priority_rank",
       { count: "exact" }
     )
     // Highest-priority automation candidates first. roi_priority_rank 1 is
@@ -50,7 +53,7 @@ export default async function Page() {
 
   const tasks = (data ?? []).map((row: AgentRoiInsightRow) => ({
     id: row.id,
-    name: row.operational_action ?? row.workflow_marker ?? null,
+    name: row.operational_action ?? row.associated_entity ?? null,
     status: row.status ?? null,
     driftStatus: row.drift_status ?? null,
     executionDurationMs: row.execution_duration_ms ?? null,
