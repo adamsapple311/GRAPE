@@ -55,7 +55,7 @@ const MODEL_NAME = 'deepseek-r1:1.5b';
 
 // Generation provider selection: "gemini" (default, cloud) or "ollama" (local DeepSeek-R1)
 const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'gemini').trim().toLowerCase();
-const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-2.5-flash';
+const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-3.8-flash';
 const GEMINI_TIMEOUT_MS = 120000; // 120s cap so a stalled generation cannot hold a lease indefinitely
 
 // Orchestration Parameters
