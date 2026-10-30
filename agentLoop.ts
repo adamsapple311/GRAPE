@@ -56,6 +56,11 @@ const MODEL_NAME = 'deepseek-r1:1.5b';
 // Generation provider selection: "gemini" (default, cloud) or "ollama" (local DeepSeek-R1)
 const LLM_PROVIDER = (process.env.LLM_PROVIDER || 'gemini').trim().toLowerCase();
 const GEMINI_MODEL_NAME = process.env.GEMINI_MODEL || 'gemini-3.5-flash';
+// Fallback chain used when the primary model is unavailable or overloaded (e.g. 503).
+const GEMINI_FALLBACK_MODELS = (process.env.GEMINI_FALLBACK_MODELS || 'gemini-3.1-flash-lite,gemini-3.5-flash-lite')
+  .split(',')
+  .map((name) => name.trim())
+  .filter((name) => name.length > 0 && name !== GEMINI_MODEL_NAME);
 const GEMINI_TIMEOUT_MS = 120000; // 120s cap so a stalled generation cannot hold a lease indefinitely
 
 // Orchestration Parameters
@@ -262,39 +267,52 @@ async function callGeminiGenerate(prompt: string): Promise<string> {
   }
 
   const ai = new GoogleGenAI({ apiKey });
+  const modelChain = [GEMINI_MODEL_NAME, ...GEMINI_FALLBACK_MODELS];
+  let lastError: unknown = null;
 
-  process.stdout.write(`\n\u{1F916} [GEMINI GENERATION: ${GEMINI_MODEL_NAME}] \u{1F680}\n`);
+  for (const modelName of modelChain) {
+    process.stdout.write(`\n\u{1F916} [GEMINI GENERATION: ${modelName}] \u{1F680}\n`);
 
-  let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
-  const timeoutPromise = new Promise<never>((_resolve, reject) => {
-    timeoutHandle = setTimeout(() => {
-      reject(new Error(`Gemini generation exceeded the ${GEMINI_TIMEOUT_MS}ms timeout.`));
-    }, GEMINI_TIMEOUT_MS);
-  });
+    let timeoutHandle: ReturnType<typeof setTimeout> | undefined;
+    const timeoutPromise = new Promise<never>((_resolve, reject) => {
+      timeoutHandle = setTimeout(() => {
+        reject(new Error(`Gemini generation exceeded the ${GEMINI_TIMEOUT_MS}ms timeout.`));
+      }, GEMINI_TIMEOUT_MS);
+    });
 
-  try {
-    const response = await Promise.race([
-      ai.models.generateContent({
-        model: GEMINI_MODEL_NAME,
-        contents: prompt,
-        config: { abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS) },
-      }),
-      timeoutPromise,
-    ]);
+    try {
+      const response = await Promise.race([
+        ai.models.generateContent({
+          model: modelName,
+          contents: prompt,
+          config: { abortSignal: AbortSignal.timeout(GEMINI_TIMEOUT_MS) },
+        }),
+        timeoutPromise,
+      ]);
 
-    const text = response.text;
-    if (!text || text.trim() === '') {
-      throw new Error('Gemini returned an empty response.');
-    }
+      const text = response.text;
+      if (!text || text.trim() === '') {
+        throw new Error(`Gemini model ${modelName} returned an empty response.`);
+      }
 
-    process.stdout.write(text);
-    process.stdout.write('\n\n[GEMINI GENERATION END]\n');
-    return text;
-  } finally {
-    if (timeoutHandle) {
-      clearTimeout(timeoutHandle);
+      process.stdout.write(text);
+      process.stdout.write('\n\n[GEMINI GENERATION END]\n');
+      return text;
+    } catch (error) {
+      lastError = error;
+      const message = error instanceof Error ? error.message : String(error);
+      console.error(`\u{26A0}\u{FE0F} Gemini model ${modelName} failed: ${message}`);
+      if (modelName !== modelChain[modelChain.length - 1]) {
+        console.error('\u{21AA}\u{FE0F} Falling back to the next Gemini model...');
+      }
+    } finally {
+      if (timeoutHandle) {
+        clearTimeout(timeoutHandle);
+      }
     }
   }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError));
 }
 
 /**
@@ -449,6 +467,7 @@ METRIC CONTEXT: ${JSON.stringify(targetInsight)}
 
 TASK EXECUTION PARAMETERS:
 - Generate a standalone executable TypeScript function named \`executeIntegration\`.
+- Declare it as a named export with exactly this shape: \`export function executeIntegration(payload) { ... }\`. The \`export\` keyword is mandatory; do not use a default export, and do not wrap the function in a class or namespace.
 - Use console logging only; do not import modules, access process or network APIs, or read/write files.
 - Accept exactly one required parameter named \`payload\`.
 - Output pure TypeScript code enclosed strictly in markdown blocks (\`\`\`typescript ... \`\`\`). Do not add conversational explanations outside of the code block.`;
